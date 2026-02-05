@@ -1,0 +1,111 @@
+/* Global Font & Reset */
+@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+}
+
+/* Hide Streamlit default header/footer */
+#MainMenu {visibility: hidden;}
+header {visibility: hidden;}
+footer {visibility: hidden;}
+
+/* Main Container Background */
+.stApp {
+    background-color: #f8f9fa;
+}
+
+/* Card Styling */
+.css-card {
+    border-radius: 16px;
+    padding: 24px;
+    background-color: #ffffff;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    margin-bottom: 20px;
+    transition: transform 0.2s ease-in-out;
+}
+
+.css-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Headers */
+h1, h2, h3 {
+    color: #1f2937;
+    font-weight: 700 !important;
+}
+
+h1 {
+    font-size: 2.25rem !important;
+    margin-bottom: 1rem !important;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Metrics */
+[data-testid="stMetric"] {
+    background-color: white;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border: 1px solid #e5e7eb;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+[data-testid="stMetricValue"] {
+    color: #111827;
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #ffffff;
+    border-right: 1px solid #e5e7eb;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 24px;
+    background-color: transparent;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    white-space: pre-wrap;
+    background-color: transparent;
+    border-radius: 8px;
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #e0e7ff;
+    color: #4338ca;
+}
+
+/* Buttons */
+.stButton > button {
+    width: 100%;
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s;
+}
+
+.stButton > button:hover {
+    transform: scale(1.02);
+}

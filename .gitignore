@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Data
+data/
+source_files/
+*.xlsx
+*.xls
+
+# Keep the database for the demo, but usually DBs are ignored
+# !inventory.db 
+# For now, let's INCLUDE inventory.db so the user has the pre-built data on cloud
+# If we wanted to ignore it: inventory.db
+
+# OS
+.DS_Store

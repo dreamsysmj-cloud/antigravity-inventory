@@ -97,6 +97,7 @@ def process_excel_file(file_path):
             if "하은" in sheet: company = "하은"
             elif "한국" in sheet: company = "한국"
             elif "다이소" in sheet: company = "다이소"
+            elif "가온" in sheet: company = "가온"
             
             # Normalize
             col_code = next((c for c in df.columns if "코드" in c), None)
@@ -118,16 +119,14 @@ def process_excel_file(file_path):
             print(f"Sheet error {sheet}: {e}")
 
     # Merge
-    full_stock = pd.concat(stock_rows) if stock_rows else pd.DataFrame()
-    full_sales = pd.concat(sales_rows) if sales_rows else pd.DataFrame()
+    stock_df = pd.concat(stock_rows, ignore_index=True) if stock_rows else pd.DataFrame()
+    sales_df = pd.concat(sales_rows, ignore_index=True) if sales_rows else pd.DataFrame()
     
-    # Strict Mapping
-    if not full_stock.empty:
-        full_stock = map_products_strict(full_stock)
-    if not full_sales.empty:
-        full_sales = map_products_strict(full_sales)
-        
-    return full_stock, full_sales
+    # Map to DB strict
+    stock_df = map_products_strict(stock_df)
+    sales_df = map_products_strict(sales_df)
+    
+    return stock_df, sales_df
 
 def get_db_sales_analysis(start_date, end_date):
     """
@@ -274,12 +273,9 @@ elif st.session_state['view'] == '재고 DB':
 
 # 3. View: 통합데이터 (Crawling Data & Company Filter)
 elif st.session_state['view'] == '통합데이터':
-    st.subheader("🔄 통합 데이터 (크롤링 원본/매핑)")
+    st.subheader("🔄 통합 데이터 상세 보기 (재고/판매)")
     
-    # Upload Toggle (Implementation needed for saving uploads, but for now we assume loading from 'latest')
-    # Since we can't easily save to disk in persistent way on all cloud envs without setup,
-    # we will process the uploaded file in memory for this session if uploaded.
-    
+    # Upload Toggle
     uploaded_crawl = None
     if st.toggle("📤 통합 데이터 파일 업로드 (크롤링 결과)", value=False):
         uploaded_crawl = st.file_uploader("엑셀 파일 선택", type=['xlsx'], key="crawl_uploader")
@@ -295,18 +291,57 @@ elif st.session_state['view'] == '통합데이터':
         if f_path: 
             st.info(f"서버 최신 파일 사용: {os.path.basename(f_path)}")
             stock_df, sales_current_df = process_excel_file(f_path)
-    
-    if not stock_df.empty:
-        # Company Filters
-        st.write("### 업체별 보기")
-        col_list = ["전체", "하은", "한국", "다이소"]
-        selected_company = st.radio("업체 선택", col_list, horizontal=True)
-        
-        filtered_df = stock_df.copy()
-        if selected_company != "전체":
-            filtered_df = filtered_df[filtered_df['업체'] == selected_company]
             
-        st.dataframe(filtered_df, use_container_width=True, height=600)
+    if not stock_df.empty or not sales_current_df.empty:
+        # Search Bar
+        c_search1, c_search2 = st.columns([1, 3])
+        search_cat = c_search1.selectbox("검색 기준", ["전체", "업체", "품명", "코드"])
+        search_kw = c_search2.text_input("검색어 입력", placeholder="검색어를 입력하세요...")
+        
+        st.write("---")
+        
+        # Detailed Filters
+        # Radio buttons for selecting view mode
+        view_options = [
+            "전체 재고", 
+            "하은 재고", "하은 판매", 
+            "한국 재고", "한국 판매", 
+            "다이소 재고", "다이소 판매",
+            "가온 재고", "가온 판매"
+        ]
+        selected_view = st.radio("데이터 보기 선택", view_options, horizontal=True, index=0)
+        
+        # Determine Source DataFrame (Stock vs Sales)
+        target_df = pd.DataFrame()
+        is_sales = "판매" in selected_view
+        
+        if is_sales:
+            target_df = sales_current_df.copy()
+        else:
+            target_df = stock_df.copy()
+            
+        # Apply Company Filter
+        if "하은" in selected_view: target_df = target_df[target_df['업체'] == "하은"]
+        elif "한국" in selected_view: target_df = target_df[target_df['업체'] == "한국"]
+        elif "다이소" in selected_view: target_df = target_df[target_df['업체'] == "다이소"]
+        elif "가온" in selected_view: target_df = target_df[target_df['업체'] == "가온"]
+        
+        # Apply Search Filter
+        if search_kw:
+            if search_cat == "전체":
+                mask = target_df.astype(str).apply(lambda x: x.str.contains(search_kw, case=False)).any(axis=1)
+                target_df = target_df[mask]
+            elif search_cat == "업체":
+                target_df = target_df[target_df['업체'].astype(str).str.contains(search_kw, case=False)]
+            elif search_cat == "품명":
+                target_df = target_df[target_df['품명(표준)'].astype(str).str.contains(search_kw, case=False)]
+            elif search_cat == "코드":
+                target_df = target_df[target_df['코드'].astype(str).str.contains(search_kw, case=False)]
+        
+        # Display Result
+        st.markdown(f"**조회된 데이터: {len(target_df)}건**")
+        st.dataframe(target_df, use_container_width=True, height=600)
+        
     else:
         st.warning("데이터가 없습니다.")
 

@@ -457,19 +457,29 @@ elif st.session_state['view'] == '판매 이력 분석':
                 '코드': ['haeun_code', 'hankook_code', 'daiso_codes']
             }
             
+            
             df = filter_dataframe(df, s_cat, s_kw, col_map)
             
-            # Style for heatmap
-            st.dataframe(
-                df[['품명', '규격', '단가', '입수', '총판매량', '월평균', '일평균']].sort_values('총판매량', ascending=False).style.format({
-                    "단가": "{:,.0f}",
-                    "총판매량": "{:,.0f}",
-                    "월평균": "{:,.1f}",
-                    "일평균": "{:,.1f}"
-                }).background_gradient(subset=['총판매량'], cmap="Greens"),
-                use_container_width=True,
-                height=800
-            )
+            if not df.empty:
+                # Handle NaNs for formatting
+                df['단가'] = df['단가'].fillna(0)
+                df['총판매량'] = df['총판매량'].fillna(0)
+                df['월평균'] = df['월평균'].fillna(0)
+                df['일평균'] = df['일평균'].fillna(0)
+                
+                # Style for heatmap
+                st.dataframe(
+                    df[['품명', '규격', '단가', '입수', '총판매량', '월평균', '일평균']].sort_values('총판매량', ascending=False).style.format({
+                        "단가": "{:,.0f}",
+                        "총판매량": "{:,.0f}",
+                        "월평균": "{:,.1f}",
+                        "일평균": "{:,.1f}"
+                    }).background_gradient(subset=['총판매량'], cmap="Greens"),
+                    use_container_width=True,
+                    height=800
+                )
+            else:
+                st.info("검색 결과가 없습니다.")
         else:
             st.info("선택한 기간에 해당하는 판매 이력이 DB에 없습니다.")
     else:

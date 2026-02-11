@@ -141,6 +141,7 @@ def get_db_sales_analysis(start_date, end_date):
             p.standard as 규격,
             p.unit_price as 단가,
             p.pack_qty as 입수,
+            p.haeun_code, p.hankook_code, p.daiso_codes,
             SUM(s.qty) as 총판매량
         FROM sales_history s
         JOIN products p ON s.product_id = p.id
@@ -163,6 +164,44 @@ def get_db_sales_analysis(start_date, end_date):
     df['일평균'] = df['총판매량'] / days
     
     return df
+
+# --------------------------------------------------------------------------------
+# Helper: Search Filter Logic
+# --------------------------------------------------------------------------------
+def filter_dataframe(df, category, keyword, col_map):
+    """
+    df: Target DataFrame
+    category: Selected Category (전체, 업체, 품명, 코드)
+    keyword: Search Keyword
+    col_map: Dict mapping category to list of columns in df
+             e.g. {'품명': ['name'], '코드': ['code1', 'code2'], '업체': ['company']}
+    """
+    if not keyword or df.empty:
+        return df
+        
+    mask = pd.Series(False, index=df.index)
+    
+    # 1. '전체' -> Search all mapped columns
+    if category == "전체":
+        all_cols = []
+        for cols in col_map.values():
+            all_cols.extend(cols)
+        # Unique
+        all_cols = list(set(all_cols))
+        
+        for col in all_cols:
+            if col in df.columns:
+                mask |= df[col].astype(str).str.contains(keyword, case=False, na=False)
+                
+    # 2. Specific Category
+    elif category in col_map:
+        target_cols = col_map[category]
+        for col in target_cols:
+            if col in df.columns:
+                mask |= df[col].astype(str).str.contains(keyword, case=False, na=False)
+                
+    return df[mask]
+
 
 # --------------------------------------------------------------------------------
 # Main UI & Navigation
@@ -207,6 +246,22 @@ if st.session_state['view'] == '현재 재고':
     st.subheader("📦 현재 재고 현황")
     
     stock_df, sales_df = get_current_data()
+    
+    # Search Bar
+    if not stock_df.empty:
+        c_search1, c_search2 = st.columns([1, 4])
+        s_cat = c_search1.selectbox("검색 기준", ["전체", "업체", "품명", "코드"], key="inv_cat")
+        s_kw = c_search2.text_input("검색어 입력", placeholder="검색어를 입력하세요...", key="inv_kw")
+        
+        # Mapping
+        # stock_df has: ['업체', '코드', '수량', '품명(표준)', '규격(표준)', '매입단가', '입수', 'PID']
+        col_map = {
+            '업체': ['업체'],
+            '품명': ['품명(표준)'],
+            '코드': ['코드']
+        }
+        
+        stock_df = filter_dataframe(stock_df, s_cat, s_kw, col_map)
     
     if not stock_df.empty:
         # Summary
@@ -268,6 +323,20 @@ elif st.session_state['view'] == '재고 DB':
     db_df = pd.read_sql_query("SELECT * FROM products ORDER BY name", conn)
     conn.close()
     
+    # Search Bar
+    c_search1, c_search2 = st.columns([1, 4])
+    s_cat = c_search1.selectbox("검색 기준", ["전체", "품명", "코드"], key="db_cat")
+    s_kw = c_search2.text_input("검색어 입력", placeholder="검색어를 입력하세요...", key="db_kw")
+    
+    # Mapping
+    # db_df has: ['id', 'name', 'haeun_code', 'hankook_code', 'daiso_codes', 'standard', 'unit_price', 'pack_qty', 'updated_at']
+    col_map = {
+        '품명': ['name'],
+        '코드': ['haeun_code', 'hankook_code', 'daiso_codes']
+    }
+    
+    db_df = filter_dataframe(db_df, s_cat, s_kw, col_map)
+    
     st.markdown(f"**총 등록 품목: {len(db_df)}개**")
     st.dataframe(db_df, use_container_width=True, height=600)
 
@@ -293,12 +362,10 @@ elif st.session_state['view'] == '통합데이터':
             stock_df, sales_current_df = process_excel_file(f_path)
             
     if not stock_df.empty or not sales_current_df.empty:
-        # ----------------------------------------------------------------
-        # Search Bar (Reverted to Single Bar)
-        # ----------------------------------------------------------------
+        # Search Bar
         c_search1, c_search2 = st.columns([1, 4])
-        search_cat = c_search1.selectbox("검색 기준", ["전체", "업체", "품명", "코드"], key="search_cat")
-        search_kw = c_search2.text_input("검색어 입력", placeholder="검색어를 입력하세요...", key="search_kw")
+        search_cat = c_search1.selectbox("검색 기준", ["전체", "업체", "품명", "코드"], key="int_cat")
+        search_kw = c_search2.text_input("검색어 입력", placeholder="검색어를 입력하세요...", key="int_kw")
         
         st.write("---")
 
@@ -341,18 +408,12 @@ elif st.session_state['view'] == '통합데이터':
             ]
             
         # 3. Apply Search Filter
-        if search_kw:
-            if search_cat == "전체":
-                # Search across all columns (convert to string first)
-                mask = target_df.astype(str).apply(lambda x: x.str.contains(search_kw, case=False)).any(axis=1)
-                target_df = target_df[mask]
-            elif search_cat == "업체":
-                target_df = target_df[target_df['업체'].astype(str).str.contains(search_kw, case=False)]
-            elif search_cat == "품명":
-                # Use '품명(표준)' which is guaranteed from strict mapping
-                target_df = target_df[target_df['품명(표준)'].astype(str).str.contains(search_kw, case=False)]
-            elif search_cat == "코드":
-                target_df = target_df[target_df['코드'].astype(str).str.contains(search_kw, case=False)]
+        col_map = {
+            '업체': ['업체'],
+            '품명': ['품명(표준)'],
+            '코드': ['코드']
+        }
+        target_df = filter_dataframe(target_df, search_cat, search_kw, col_map)
         
         # Display Result
         st.markdown(f"**조회된 데이터: {len(target_df)}건**")
@@ -371,29 +432,45 @@ elif st.session_state['view'] == '통합데이터':
 
 # 4. View: 판매 이력 분석
 elif st.session_state['view'] == '판매 이력 분석':
-    st.subheader("📅 기간별 판매 분석")
-    st.markdown("DB에 저장된 과거 판매 이력을 바탕으로 **월평균/일평균**을 계산합니다.")
+    st.subheader("🗓️ 기간별 판매 분석")
+    st.markdown("DB에 저장된 과거 판매 이력을 바탕으로 월평균/일평균을 계산합니다.")
     
-    c_d1, c_d2 = st.columns(2)
-    start_d = c_d1.date_input("시작일", datetime(2025, 11, 1))
-    end_d = c_d2.date_input("종료일", datetime.today())
+    c1, c2 = st.columns(2)
+    start_date = c1.date_input("시작일", datetime(2025, 11, 1))
+    end_date = c2.date_input("종료일", datetime.now())
     
-    if start_d <= end_d:
-        df_anal = get_db_sales_analysis(start_d, end_d)
+    if start_date <= end_date:
+        df = get_db_sales_analysis(start_date, end_date)
         
-        if not df_anal.empty:
-            st.markdown(f"**{start_d} ~ {end_d} ({len(df_anal)}개 품목)**")
+        if not df.empty:
+            st.markdown(f"**{start_date} ~ {end_date} ({len(df)}개 품목)**")
+            
+            # Search Bar
+            c_search1, c_search2 = st.columns([1, 4])
+            s_cat = c_search1.selectbox("검색 기준", ["전체", "품명", "코드"], key="stats_cat")
+            s_kw = c_search2.text_input("검색어 입력", placeholder="검색어를 입력하세요...", key="stats_kw")
+            
+            # Mapping
+            # df has: ['품명', '규격', '단가', '입수', 'haeun_code', 'hankook_code', 'daiso_codes', '총판매량', '월평균', '일평균']
+            col_map = {
+                '품명': ['품명'],
+                '코드': ['haeun_code', 'hankook_code', 'daiso_codes']
+            }
+            
+            df = filter_dataframe(df, s_cat, s_kw, col_map)
+            
+            # Style for heatmap
             st.dataframe(
-                df_anal.style.format({
-                    "매입단가": "{:,.0f}",
+                df[['품명', '규격', '단가', '입수', '총판매량', '월평균', '일평균']].sort_values('총판매량', ascending=False).style.format({
+                    "단가": "{:,.0f}",
                     "총판매량": "{:,.0f}",
                     "월평균": "{:,.1f}",
                     "일평균": "{:,.1f}"
-                }).background_gradient(subset=['월평균'], cmap="Greens"),
+                }).background_gradient(subset=['총판매량'], cmap="Greens"),
                 use_container_width=True,
-                height=600
+                height=800
             )
         else:
-            st.warning("선택한 기간에 해당하는 판매 이력이 DB에 없습니다.")
+            st.info("선택한 기간에 해당하는 판매 이력이 DB에 없습니다.")
     else:
-        st.error("종료일이 시작일보다 빠릅니다.")
+        st.error("종료일이 시작일보다 빠를 수 없습니다.")

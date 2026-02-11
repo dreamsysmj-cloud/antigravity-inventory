@@ -293,54 +293,109 @@ elif st.session_state['view'] == '통합데이터':
             stock_df, sales_current_df = process_excel_file(f_path)
             
     if not stock_df.empty or not sales_current_df.empty:
-        # Search Bar
-        c_search1, c_search2 = st.columns([1, 3])
-        search_cat = c_search1.selectbox("검색 기준", ["전체", "업체", "품명", "코드"])
-        search_kw = c_search2.text_input("검색어 입력", placeholder="검색어를 입력하세요...")
+        # ----------------------------------------------------------------
+        # Advanced Search Filter
+        # ----------------------------------------------------------------
+        st.markdown("##### 🔍 상세 검색")
         
+        # 5 Columns: Type, Company, Name, Code, Search Button
+        c_f1, c_f2, c_f3, c_f4, c_f5 = st.columns([1.5, 1.5, 2, 2, 1])
+        
+        with c_f1:
+            filter_type = st.selectbox("구분", ["전체", "재고", "판매"], key="s_type")
+        with c_f2:
+            filter_company = st.selectbox("업체", ["전체", "하은", "한국", "다이소", "가온"], key="s_comp")
+        with c_f3:
+            filter_name = st.text_input("품명", placeholder="품명 검색", key="s_name")
+        with c_f4:
+            filter_code = st.text_input("코드", placeholder="코드 검색", key="s_code")
+        with c_f5:
+            st.write("") # Spacer
+            st.write("") # Spacer
+            do_search = st.button("🔍 검색", type="primary", use_container_width=True)
+
         st.write("---")
-        
-        # Detailed Filters
+
+        # ----------------------------------------------------------------
+        # Data Viewer (Quick Filters)
+        # ----------------------------------------------------------------
         # Radio buttons for selecting view mode
         view_options = [
-            "전체 재고", 
+            "전체 재고", "전체 판매",
             "하은 재고", "하은 판매", 
             "한국 재고", "한국 판매", 
             "다이소 재고", "다이소 판매",
             "가온 재고", "가온 판매"
         ]
+        
+        # If search button is clicked, we might want to override or ignore this, 
+        # but let's keep it as a quick filter that presets the data.
+        # However, to avoid conflict, let's treat the Search Filter above as the PRIMARY filter if used.
+        # But user asked for "Data View Selection" AND "Search".
+        # Let's try to combine: The radio button sets the BASE dataset, and the top filters REFINE it.
+        # OR, user might want them to be independent. 
+        # Based on "Search when button clicked", let's prioritize the Search Bar if clicked.
+        # But if not clicked, maybe show based on Radio?
+        
+        # Simpler approach: Radio button is just a preset for filters?
+        # No, user asked for specific "Data View Selection".
+        # Let's keep the Radio for Quick View, and apply Search Filters ON TOP of it.
+        
         selected_view = st.radio("데이터 보기 선택", view_options, horizontal=True, index=0)
         
-        # Determine Source DataFrame (Stock vs Sales)
-        target_df = pd.DataFrame()
-        is_sales = "판매" in selected_view
+        # 1. Base Data Construction
+        # We need a consolidated DF to filter easier, or choose Stock/Sales based on selection.
         
-        if is_sales:
-            target_df = sales_current_df.copy()
+        # Add 'Type' column for differentiation
+        stock_df['구분'] = '재고'
+        sales_current_df['구분'] = '판매'
+        
+        combined_df = pd.concat([stock_df, sales_current_df], ignore_index=True)
+        
+        # 2. Filter by View Selection (Quick Filter)
+        if "전체 재고" in selected_view:
+            target_df = combined_df[combined_df['구분'] == '재고']
+        elif "전체 판매" in selected_view:
+            target_df = combined_df[combined_df['구분'] == '판매']
         else:
-            target_df = stock_df.copy()
+            # "하은 재고", "하은 판매" etc.
+            parts = selected_view.split()
+            v_comp = parts[0]
+            v_type = parts[1]
+            target_df = combined_df[
+                (combined_df['업체'] == v_comp) & 
+                (combined_df['구분'] == v_type)
+            ]
             
-        # Apply Company Filter
-        if "하은" in selected_view: target_df = target_df[target_df['업체'] == "하은"]
-        elif "한국" in selected_view: target_df = target_df[target_df['업체'] == "한국"]
-        elif "다이소" in selected_view: target_df = target_df[target_df['업체'] == "다이소"]
-        elif "가온" in selected_view: target_df = target_df[target_df['업체'] == "가온"]
+        # 3. Apply Top Search Filters (Refinement)
+        # Only if the user inputs something specific, we refine the 'target_df'
         
-        # Apply Search Filter
-        if search_kw:
-            if search_cat == "전체":
-                mask = target_df.astype(str).apply(lambda x: x.str.contains(search_kw, case=False)).any(axis=1)
-                target_df = target_df[mask]
-            elif search_cat == "업체":
-                target_df = target_df[target_df['업체'].astype(str).str.contains(search_kw, case=False)]
-            elif search_cat == "품명":
-                target_df = target_df[target_df['품명(표준)'].astype(str).str.contains(search_kw, case=False)]
-            elif search_cat == "코드":
-                target_df = target_df[target_df['코드'].astype(str).str.contains(search_kw, case=False)]
+        if filter_type != "전체":
+            target_df = target_df[target_df['구분'] == filter_type]
+            
+        if filter_company != "전체":
+            target_df = target_df[target_df['업체'] == filter_company]
+            
+        if filter_name:
+            target_df = target_df[target_df['품명(표준)'].astype(str).str.contains(filter_name, case=False) | 
+                                  target_df['품명'].astype(str).str.contains(filter_name, case=False)]
+                                  
+        if filter_code:
+            target_df = target_df[target_df['코드'].astype(str).str.contains(filter_code, case=False)]
         
         # Display Result
         st.markdown(f"**조회된 데이터: {len(target_df)}건**")
-        st.dataframe(target_df, use_container_width=True, height=600)
+        
+        # Columns to show
+        cols = ['구분', '업체', '코드', '품명(표준)', '규격(표준)', '수량', '매입단가', '입수']
+        # If strict mapping failed for some, '품명(표준)' might be NaN, fall back to '코드' or original if we kept it.
+        # The `map_products_strict` only keeps mapped ones.
+        
+        st.dataframe(
+            target_df[cols].sort_values(['업체', '품명(표준)']), 
+            use_container_width=True, 
+            height=600
+        )
         
     else:
         st.warning("데이터가 없습니다.")

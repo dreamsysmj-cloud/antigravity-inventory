@@ -166,106 +166,153 @@ def get_db_sales_analysis(start_date, end_date):
     return df
 
 # --------------------------------------------------------------------------------
-# Main UI
+# Main UI & Navigation
 # --------------------------------------------------------------------------------
 st.title("📦 물류 통합 관리 (Strict Mode)")
 st.markdown(f"**{datetime.now().strftime('%Y-%m-%d')}**")
 
-# Sidebar
-with st.sidebar:
-    st.header("⚙️ 데이터 관리")
-    if st.button("🔄 새로고침"):
-        st.cache_data.clear()
-        st.rerun()
-        
-    st.markdown("---")
-    st.subheader("DB 업데이트")
-    db_file = st.file_uploader("품목 마스터 (엑셀)", type=['xlsx'])
-    
-    if db_file is not None:
-        if st.button("DB 업로드 실행"):
-            with st.spinner("DB 업데이트 중..."):
-                try:
-                    df = pd.read_excel(db_file)
-                    # Clean columns
-                    df.columns = df.columns.astype(str).str.replace('\n', '').str.replace(' ', '')
-                    
-                    # Rename map based on source file inspection
-                    rename_map = {
-                        '매입단가(vat미포함)': '매입단가',
-                        '하은코드': '하은코드',
-                        '한국코드': '한국코드',
-                        '품명': '품명',
-                        '규격': '규격',
-                    }
-                    df = df.rename(columns=rename_map)
-                    
-                    success_count = 0
-                    total = len(df)
-                    progress_bar = st.progress(0)
-                    
-                    for idx, row in df.iterrows():
-                        # Skip empty
-                        if pd.isna(row.get('품명')) and pd.isna(row.get('하은코드')) and pd.isna(row.get('한국코드')):
-                            continue
-                            
-                        database.upsert_product_strict(row)
-                        success_count += 1
-                        
-                        if idx % 10 == 0:
-                            progress_bar.progress(min(idx / total, 1.0))
-                            
-                    progress_bar.progress(1.0)
-                    st.success(f"완료! {success_count}개 품목 업데이트됨.")
-                    st.cache_data.clear() # Clear cache to reflect changes
-                    
-                except Exception as e:
-                    st.error(f"오류 발생: {e}")
+# Initialize Session State for View Navigation
+if 'view' not in st.session_state:
+    st.session_state['view'] = '현재 재고'
 
-# 1. Load Data
-target_file = None
-uploaded_file = st.sidebar.file_uploader("최신 크롤링 파일 (통합데이터)", type=['xlsx']) # Optional manual
+# Top Navigation Buttons
+c1, c2, c3, c4 = st.columns(4)
+if c1.button("📦 현재 재고", use_container_width=True, type="primary" if st.session_state['view']=='현재 재고' else "secondary"):
+    st.session_state['view'] = '현재 재고'
+    st.rerun()
+if c2.button("🗃️ 재고 DB", use_container_width=True, type="primary" if st.session_state['view']=='재고 DB' else "secondary"):
+    st.session_state['view'] = '재고 DB'
+    st.rerun()
+if c3.button("🔄 통합데이터", use_container_width=True, type="primary" if st.session_state['view']=='통합데이터' else "secondary"):
+    st.session_state['view'] = '통합데이터'
+    st.rerun()
+if c4.button("📈 판매 이력 분석", use_container_width=True, type="primary" if st.session_state['view']=='판매 이력 분석' else "secondary"):
+    st.session_state['view'] = '판매 이력 분석'
+    st.rerun()
 
-if uploaded_file:
-    target_file = uploaded_file
-else:
+st.markdown("---")
+
+# --------------------------------------------------------------------------------
+# View Logic
+# --------------------------------------------------------------------------------
+
+# Common Data Loading (Used in Current Inventory & Integrated Data)
+def get_current_data():
     f_path, err = load_latest_file()
-    if f_path: target_file = f_path
+    if f_path:
+        return process_excel_file(f_path)
+    return pd.DataFrame(), pd.DataFrame()
 
-# Process
-stock_df = pd.DataFrame()
-sales_current_df = pd.DataFrame()
-
-if target_file:
-    try:
-        stock_df, sales_current_df = process_excel_file(target_file)
-    except PermissionError:
-        st.error("❌ 엑셀 파일이 열려있습니다. 닫으세요.")
-
-# Tabs
-tab_stock, tab_analysis = st.tabs(["📦 현재 재고 (DB등록분)", "📈 판매 이력 분석"])
-
-with tab_stock:
-    if target_file and not stock_df.empty:
-        st.markdown(f"사용 파일: `{os.path.basename(target_file.name if hasattr(target_file, 'name') else target_file)}`")
-        
+# 1. View: 현재 재고 (Existing Logic)
+if st.session_state['view'] == '현재 재고':
+    st.subheader("📦 현재 재고 현황")
+    
+    stock_df, sales_df = get_current_data()
+    
+    if not stock_df.empty:
         # Summary
         c1, c2, c3 = st.columns(3)
         c1.metric("총 재고량", f"{stock_df['수량'].sum():,.0f}")
         c2.metric("총 재고금액 (추정)", f"{(stock_df['수량'] * stock_df['매입단가']).sum():,.0f}원")
         c3.metric("표시 품목 수", f"{len(stock_df):,}개")
         
-        # Strict Table
         st.dataframe(
             stock_df[['품명(표준)', '규격(표준)', '업체', '수량', '매입단가', '입수']].sort_values('품명(표준)'), 
             use_container_width=True, 
             height=600
         )
     else:
-        st.info("표시할 재고 데이터가 없습니다. (크롤링 파일을 확인하거나 DB에 등록된 품목인지 확인하세요)")
+        st.info("표시할 재고 데이터가 없습니다. (크롤링 파일을 로드하지 못했거나 데이터가 비어있습니다)")
 
-with tab_analysis:
-    st.markdown("### 📅 기간별 판매 분석")
+# 2. View: 재고 DB (Master DB Management)
+elif st.session_state['view'] == '재고 DB':
+    st.subheader("🗃️ 품목 마스터 DB 관리")
+    
+    # Upload Toggle
+    if st.toggle("📤 품목 마스터 파일 업로드 (물류 db 파일.xlsx)", value=False):
+        uploaded_db = st.file_uploader("엑셀 파일 선택", type=['xlsx'], key="master_uploader")
+        if uploaded_db:
+            if st.button("DB 업로드 실행"):
+                with st.spinner("DB 업데이트 중..."):
+                    try:
+                        df = pd.read_excel(uploaded_db)
+                        df.columns = df.columns.astype(str).str.replace('\n', '').str.replace(' ', '')
+                        
+                        rename_map = {
+                            '매입단가(vat미포함)': '매입단가',
+                            '하은코드': '하은코드',
+                            '한국코드': '한국코드',
+                            '품명': '품명',
+                            '규격': '규격',
+                        }
+                        df = df.rename(columns=rename_map)
+                        
+                        success_count = 0
+                        progress_bar = st.progress(0)
+                        total = len(df)
+                        
+                        for idx, row in df.iterrows():
+                            if pd.isna(row.get('품명')) and pd.isna(row.get('하은코드')) and pd.isna(row.get('한국코드')):
+                                continue
+                            database.upsert_product_strict(row)
+                            success_count += 1
+                            if idx % 10 == 0: progress_bar.progress(min(idx / total, 1.0))
+                        
+                        progress_bar.progress(1.0)
+                        st.success(f"완료! {success_count}개 품목 업데이트됨.")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"오류: {e}")
+
+    # Show DB Table
+    conn = database.get_connection()
+    db_df = pd.read_sql_query("SELECT * FROM products ORDER BY name", conn)
+    conn.close()
+    
+    st.markdown(f"**총 등록 품목: {len(db_df)}개**")
+    st.dataframe(db_df, use_container_width=True, height=600)
+
+# 3. View: 통합데이터 (Crawling Data & Company Filter)
+elif st.session_state['view'] == '통합데이터':
+    st.subheader("🔄 통합 데이터 (크롤링 원본/매핑)")
+    
+    # Upload Toggle (Implementation needed for saving uploads, but for now we assume loading from 'latest')
+    # Since we can't easily save to disk in persistent way on all cloud envs without setup,
+    # we will process the uploaded file in memory for this session if uploaded.
+    
+    uploaded_crawl = None
+    if st.toggle("📤 통합 데이터 파일 업로드 (크롤링 결과)", value=False):
+        uploaded_crawl = st.file_uploader("엑셀 파일 선택", type=['xlsx'], key="crawl_uploader")
+    
+    stock_df = pd.DataFrame()
+    sales_current_df = pd.DataFrame()
+    
+    if uploaded_crawl:
+        stock_df, sales_current_df = process_excel_file(uploaded_crawl)
+        st.success("업로드된 파일을 사용합니다.")
+    else:
+        f_path, err = load_latest_file()
+        if f_path: 
+            st.info(f"서버 최신 파일 사용: {os.path.basename(f_path)}")
+            stock_df, sales_current_df = process_excel_file(f_path)
+    
+    if not stock_df.empty:
+        # Company Filters
+        st.write("### 업체별 보기")
+        col_list = ["전체", "하은", "한국", "다이소"]
+        selected_company = st.radio("업체 선택", col_list, horizontal=True)
+        
+        filtered_df = stock_df.copy()
+        if selected_company != "전체":
+            filtered_df = filtered_df[filtered_df['업체'] == selected_company]
+            
+        st.dataframe(filtered_df, use_container_width=True, height=600)
+    else:
+        st.warning("데이터가 없습니다.")
+
+# 4. View: 판매 이력 분석
+elif st.session_state['view'] == '판매 이력 분석':
+    st.subheader("📅 기간별 판매 분석")
     st.markdown("DB에 저장된 과거 판매 이력을 바탕으로 **월평균/일평균**을 계산합니다.")
     
     c_d1, c_d2 = st.columns(2)
@@ -277,8 +324,6 @@ with tab_analysis:
         
         if not df_anal.empty:
             st.markdown(f"**{start_d} ~ {end_d} ({len(df_anal)}개 품목)**")
-            
-            # Format columns
             st.dataframe(
                 df_anal.style.format({
                     "매입단가": "{:,.0f}",

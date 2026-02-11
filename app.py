@@ -25,8 +25,7 @@ def local_css(file_name):
 local_css("styles.css")
 
 # Ensure DB is initialized
-if not os.path.exists("inventory.db"):
-    database.init_db()
+database.init_db()
 
 # --------------------------------------------------------------------------------
 # Helper Functions

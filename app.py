@@ -177,6 +177,50 @@ with st.sidebar:
     if st.button("🔄 새로고침"):
         st.cache_data.clear()
         st.rerun()
+        
+    st.markdown("---")
+    st.subheader("DB 업데이트")
+    db_file = st.file_uploader("품목 마스터 (엑셀)", type=['xlsx'])
+    
+    if db_file is not None:
+        if st.button("DB 업로드 실행"):
+            with st.spinner("DB 업데이트 중..."):
+                try:
+                    df = pd.read_excel(db_file)
+                    # Clean columns
+                    df.columns = df.columns.astype(str).str.replace('\n', '').str.replace(' ', '')
+                    
+                    # Rename map based on source file inspection
+                    rename_map = {
+                        '매입단가(vat미포함)': '매입단가',
+                        '하은코드': '하은코드',
+                        '한국코드': '한국코드',
+                        '품명': '품명',
+                        '규격': '규격',
+                    }
+                    df = df.rename(columns=rename_map)
+                    
+                    success_count = 0
+                    total = len(df)
+                    progress_bar = st.progress(0)
+                    
+                    for idx, row in df.iterrows():
+                        # Skip empty
+                        if pd.isna(row.get('품명')) and pd.isna(row.get('하은코드')) and pd.isna(row.get('한국코드')):
+                            continue
+                            
+                        database.upsert_product_strict(row)
+                        success_count += 1
+                        
+                        if idx % 10 == 0:
+                            progress_bar.progress(min(idx / total, 1.0))
+                            
+                    progress_bar.progress(1.0)
+                    st.success(f"완료! {success_count}개 품목 업데이트됨.")
+                    st.cache_data.clear() # Clear cache to reflect changes
+                    
+                except Exception as e:
+                    st.error(f"오류 발생: {e}")
 
 # 1. Load Data
 target_file = None

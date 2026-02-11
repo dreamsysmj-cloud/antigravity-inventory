@@ -1,14 +1,21 @@
 /* Global Font & Reset */
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700&display=swap');
 
-html, body, [class*="css"] {
+html,
+body,
+[class*="css"] {
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
 }
 
 /* Hide Streamlit default header/footer */
-#MainMenu {visibility: hidden;}
-header {visibility: hidden;}
-footer {visibility: hidden;}
+#MainMenu {
+    visibility: hidden;
+}
+
+/* header {visibility: hidden;} */
+footer {
+    visibility: hidden;
+}
 
 /* Main Container Background */
 .stApp {
@@ -31,7 +38,9 @@ footer {visibility: hidden;}
 }
 
 /* Headers */
-h1, h2, h3 {
+h1,
+h2,
+h3 {
     color: #1f2937;
     font-weight: 700 !important;
 }
@@ -49,7 +58,7 @@ h1 {
     background-color: white;
     padding: 16px;
     border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     border: 1px solid #e5e7eb;
 }
 
@@ -98,7 +107,7 @@ h1 {
 }
 
 /* Buttons */
-.stButton > button {
+.stButton>button {
     width: 100%;
     border-radius: 8px;
     font-weight: 600;
@@ -106,6 +115,6 @@ h1 {
     transition: all 0.2s;
 }
 
-.stButton > button:hover {
+.stButton>button:hover {
     transform: scale(1.02);
 }

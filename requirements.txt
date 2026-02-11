@@ -4,3 +4,4 @@ plotly
 openpyxl
 selenium
 webdriver_manager
+matplotlib

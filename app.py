@@ -7,6 +7,7 @@ import glob
 from datetime import datetime, timedelta
 import database
 import sqlite3
+import settings_manager
 
 # --------------------------------------------------------------------------------
 # Constants & Setup
@@ -202,6 +203,51 @@ def filter_dataframe(df, category, keyword, col_map):
                 
     return df[mask]
 
+# --------------------------------------------------------------------------------
+# Helper: Settings UI
+# --------------------------------------------------------------------------------
+def render_options_ui(view_key, columns_list):
+    """
+    Renders an expander for UI settings (Height, Column Widths).
+    Returns (height, column_config).
+    """
+    settings = settings_manager.get_view_settings(view_key)
+    current_height = settings.get("height", 600)
+    current_widths = settings.get("columns", {})
+    
+    with st.expander("⚙️ 화면 설정 (옵션)"):
+        st.markdown("**테이블 높이 및 열 너비 설정**")
+        
+        # 1. Height
+        new_height = st.number_input(f"테이블 높이 (px)", value=current_height, step=50, key=f"{view_key}_h")
+        
+        # 2. Column Widths
+        st.markdown("---")
+        st.markdown("**열 너비 고정 (0이면 자동)**")
+        
+        cols = st.columns(4) # Grid layout for inputs
+        new_widths = {}
+        
+        for idx, col_name in enumerate(columns_list):
+            # Default to 0 (auto) or saved value
+            default_val = current_widths.get(col_name, 0)
+            with cols[idx % 4]:
+                w = st.number_input(f"{col_name}", value=default_val, step=10, key=f"{view_key}_w_{idx}")
+                new_widths[col_name] = w
+        
+        if st.button("💾 설정 저장", key=f"{view_key}_save"):
+            settings_manager.update_view_settings(view_key, new_height, new_widths)
+            st.success("설정이 저장되었습니다.")
+            st.rerun()
+
+    # Build column_config for st.dataframe
+    column_config = {}
+    for col, width in current_widths.items():
+        if width > 0:
+            column_config[col] = st.column_config.Column(width=width)
+            
+    return current_height, column_config
+
 
 # --------------------------------------------------------------------------------
 # Main UI & Navigation
@@ -270,10 +316,15 @@ if st.session_state['view'] == '현재 재고':
         c2.metric("총 재고금액 (추정)", f"{(stock_df['수량'] * stock_df['매입단가']).sum():,.0f}원")
         c3.metric("표시 품목 수", f"{len(stock_df):,}개")
         
+        # [NEW] Settings UI
+        display_cols = ['품명(표준)', '규격(표준)', '업체', '수량', '매입단가', '입수']
+        height, col_config = render_options_ui("current_inventory", display_cols)
+        
         st.dataframe(
-            stock_df[['품명(표준)', '규격(표준)', '업체', '수량', '매입단가', '입수']].sort_values('품명(표준)'), 
+            stock_df[display_cols].sort_values('품명(표준)'), 
             use_container_width=True, 
-            height=600
+            height=height,
+            column_config=col_config
         )
     else:
         st.info("표시할 재고 데이터가 없습니다. (크롤링 파일을 로드하지 못했거나 데이터가 비어있습니다)")
@@ -338,7 +389,18 @@ elif st.session_state['view'] == '재고 DB':
     db_df = filter_dataframe(db_df, s_cat, s_kw, col_map)
     
     st.markdown(f"**총 등록 품목: {len(db_df)}개**")
-    st.dataframe(db_df, use_container_width=True, height=600)
+    
+    # [NEW] Settings UI
+    # db_df columns: id, name, haeun_code, hankook_code, daiso_codes, standard, unit_price, pack_qty, updated_at
+    display_cols = list(db_df.columns)
+    height, col_config = render_options_ui("stock_db", display_cols)
+    
+    st.dataframe(
+        db_df, 
+        use_container_width=True, 
+        height=height,
+        column_config=col_config
+    )
 
 # 3. View: 통합데이터 (Crawling Data & Company Filter)
 elif st.session_state['view'] == '통합데이터':
@@ -421,10 +483,14 @@ elif st.session_state['view'] == '통합데이터':
         # Columns to show
         cols = ['구분', '업체', '코드', '품명(표준)', '규격(표준)', '수량', '매입단가', '입수']
         
+        # [NEW] Settings UI
+        height, col_config = render_options_ui("integrated_data", cols)
+        
         st.dataframe(
             target_df[cols].sort_values(['업체', '품명(표준)']), 
             use_container_width=True, 
-            height=600
+            height=height,
+            column_config=col_config
         )
         
     else:
@@ -467,16 +533,21 @@ elif st.session_state['view'] == '판매 이력 분석':
                 df['월평균'] = df['월평균'].fillna(0)
                 df['일평균'] = df['일평균'].fillna(0)
                 
+                # [NEW] Settings UI
+                display_cols = ['품명', '규격', '단가', '입수', '총판매량', '월평균', '일평균']
+                height, col_config = render_options_ui("sales_analysis", display_cols)
+                
                 # Style for heatmap
                 st.dataframe(
-                    df[['품명', '규격', '단가', '입수', '총판매량', '월평균', '일평균']].sort_values('총판매량', ascending=False).style.format({
+                    df[display_cols].sort_values('총판매량', ascending=False).style.format({
                         "단가": "{:,.0f}",
                         "총판매량": "{:,.0f}",
                         "월평균": "{:,.1f}",
                         "일평균": "{:,.1f}"
                     }).background_gradient(subset=['총판매량'], cmap="Greens"),
                     use_container_width=True,
-                    height=800
+                    height=height,
+                    column_config=col_config
                 )
             else:
                 st.info("검색 결과가 없습니다.")

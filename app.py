@@ -208,43 +208,27 @@ def filter_dataframe(df, category, keyword, col_map):
 # --------------------------------------------------------------------------------
 def render_options_ui(view_key, columns_list):
     """
-    Renders an expander for UI settings (Height, Column Widths).
+    Renders an expander for UI settings (Height only).
     Returns (height, column_config).
     """
     settings = settings_manager.get_view_settings(view_key)
     current_height = settings.get("height", 600)
-    current_widths = settings.get("columns", {})
     
     with st.expander("⚙️ 화면 설정 (옵션)"):
-        st.markdown("**테이블 높이 및 열 너비 설정**")
+        st.markdown("**테이블 높이 설정**")
         
         # 1. Height
         new_height = st.number_input(f"테이블 높이 (px)", value=current_height, step=50, key=f"{view_key}_h")
         
-        # 2. Column Widths
-        st.markdown("---")
-        st.markdown("**열 너비 고정 (0이면 자동)**")
-        
-        cols = st.columns(4) # Grid layout for inputs
-        new_widths = {}
-        
-        for idx, col_name in enumerate(columns_list):
-            # Default to 0 (auto) or saved value
-            default_val = current_widths.get(col_name, 0)
-            with cols[idx % 4]:
-                w = st.number_input(f"{col_name}", value=default_val, step=10, key=f"{view_key}_w_{idx}")
-                new_widths[col_name] = w
-        
         if st.button("💾 설정 저장", key=f"{view_key}_save"):
-            settings_manager.update_view_settings(view_key, new_height, new_widths)
+            # Save only height. Columns are auto-sized (not saved).
+            settings_manager.update_view_settings(view_key, new_height, {})
             st.success("설정이 저장되었습니다.")
             st.rerun()
 
     # Build column_config for st.dataframe
+    # Return empty config to let Streamlit auto-size columns
     column_config = {}
-    for col, width in current_widths.items():
-        if width > 0:
-            column_config[col] = st.column_config.Column(width=width)
             
     return current_height, column_config
 
